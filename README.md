@@ -17,6 +17,11 @@ Working with real hospital and health data comes with two big problems that we h
 
 ![Target Class Distribution](plots/target_class_distribution.png)
 
+### Understanding the Target Class Distribution & How We Handled It
+As shown in the chart above, the `TenYearCHD` target is heavily skewed toward the negative class (`0` = No Heart Disease), leaving the positive class (`1` = Heart Disease) as a small minority:
+* **Why We Did Not Use SMOTE:** Instead of generating artificial patient records with **SMOTE** (Synthetic Minority Over-sampling Technique)—which can distort real clinical relationships in tabular medical data—we kept the original distribution of patient records intact.
+* **Cost-Sensitive Learning with `pos_weight`:** To stop the neural network from ignoring the minority class, we calculated a positive class weight (`pos_weight`) from the training set and passed it directly into PyTorch's `BCEWithLogitsLoss(pos_weight=...)`. This tells the model to pay a much higher penalty whenever it misses a real heart disease case (`1`), forcing it to learn the patterns of high-risk patients without creating synthetic data.
+
 ---
 
 ## How the Project Works (Step-by-Step)
@@ -29,9 +34,10 @@ To keep our work clean and avoid data leaks, we split the project into three not
 * **Saving the Tools:** We saved all four data-cleaning tools in the `artifacts/` folder. This way, when we test our model later, we clean the test data using the exact same rules learned from the training data.
 
 ### Step 2: Training the Model & Finding the Best Threshold (`02_model_training_and_tuning.ipynb`)
-* **Training with PyTorch:** We built and trained a neural network in PyTorch using the cleaned training data. We watched the training and validation loss curves (`plots/train_validation_loss_evolution.png`) to make sure the model was actually learning patterns and not just memorizing the training data.
-* **Tuning the Decision Cutoff (Threshold):** By default, models predict "yes" if the probability is above `0.50` (50%). Because our data is uneven, `0.50` is not the best choice. We tested many different cutoff values on the validation set to see which one gave the best F1-score.
-* **Saving the Model and Cutoff:** The best cutoff turned out to be **`0.60`**, which gave a **validation F1-score of `39.53%`**. We saved the trained model weights (`model/neural_network.pth`) and the best cutoff number (`model/threshold.txt`) as separate files so they are easy to load and use later.
+* **Neural Network Architecture & Loss Function:** We built a feedforward tabular neural network (Multi-Layer Perceptron) in PyTorch using linear layers, non-linear activations, dropout regularization, and a single raw output logit per patient. We trained it with **Binary Cross-Entropy with Logits Loss (`BCEWithLogitsLoss`)** weighted by `pos_weight` so raw model logits are handled with numerical stability while penalizing missed positive cases.
+* **Monitoring Training Progress:** We tracked both training and validation loss across epochs (`plots/train_validation_loss_evolution.png`) to ensure the network learned real generalizable patterns rather than overfitting the training data.
+* **Tuning the Decision Cutoff (Threshold):** By default, binary classifiers predict "yes" if the predicted probability is above `0.50` (50%). Because our dataset is imbalanced and trained with `pos_weight`, `0.50` is not optimal. We tested multiple probability cutoffs on the validation set to find the threshold that maximized the F1-score.
+* **Saving the Model and Cutoff:** The best cutoff turned out to be **`0.60`**, which achieved a **validation F1-score of `39.53%`**. We saved the trained model weights (`model/neural_network.pth`) and the optimal cutoff (`model/threshold.txt`) as separate files so they can be cleanly loaded during evaluation.
 
 ![Training and Validation Loss Evolution](plots/train_validation_loss_evolution.png)
 
@@ -43,19 +49,19 @@ To keep our work clean and avoid data leaks, we split the project into three not
 
 ## Results on the Test Set
 
-When we tested our trained PyTorch model on the unseen test data using the **`0.60`** threshold, here is what we got:
+After tuning our decision threshold to **`0.60`** on the validation set (where it reached a **39.53% F1-score**), we evaluated our trained PyTorch model once on the completely unseen test data:
 
-| Metric | Validation Set | Test Set (Unseen Data) | What This Means in Simple Terms |
-| :--- | :---: | :---: | :--- |
-| **Decision Threshold** | `0.60` | `0.60` | The probability cutoff chosen on the validation set |
-| **ROC-AUC Score** | — | **68.83%** | Shows the model can tell high-risk and low-risk patients apart |
-| **Recall (Sensitivity)** | — | **40.31%** | The model successfully caught over 40% of real heart disease cases |
-| **F1-Score** | **39.53%** | **31.61%** | The overall balance between catching real cases and avoiding false alarms |
+| Metric | Test Set Score | What This Means in Simple Terms |
+| :--- | :---: | :--- |
+| **Decision Threshold** | **`0.60`** | The probability cutoff selected on the validation set and applied to the test set |
+| **ROC-AUC Score** | **68.83%** | Shows the model can reliably separate high-risk patients from low-risk patients |
+| **Recall (Sensitivity)** | **40.31%** | The model successfully caught over 40% of real heart disease cases in unseen patients |
+| **F1-Score** | **31.61%** | The overall balance between catching real heart disease cases and limiting false alarms |
 
 ### What We Learned from These Results
+* **Handling Imbalance Without SMOTE Works:** Combining `BCEWithLogitsLoss(pos_weight=...)` during training with threshold tuning (`0.60`) allowed the model to detect high-risk patients using only authentic patient records.
 * **Choosing the Right Metrics Matters:** Because the Framingham dataset is heavily imbalanced, avoiding accuracy and precision in favor of **ROC-AUC**, **Recall**, and **F1-Score** gave us an honest view of how well the model identifies high-risk patients.
 * **The Model Actually Learned:** Getting a **68.83% ROC-AUC** score on brand-new test data proves that the PyTorch neural network picked up real health patterns from the patient records instead of just guessing the majority class.
-* **Why Tuning the Cutoff Helped:** Using our **`0.60`** threshold allowed the model to catch **40.31%** of patients who truly developed heart disease within 10 years, while keeping a **31.61% F1-score**.
 * **Clean and Repeatable Setup:** By saving our data-cleaning tools (`artifacts/`), model weights (`model/neural_network.pth`), and threshold (`model/threshold.txt`) separately, anyone can run this project and get the exact same results shown in `evaluation-metrics/metrics_test_set.png`.
 
 | Test Set Confusion Matrix | Test Set ROC Curve |
@@ -152,4 +158,4 @@ Follow these simple steps to copy this project to your computer and run it yours
 
 ## Conclusion
 
-This project shows how careful data cleaning, a PyTorch neural network, and tuning the decision threshold can work together to predict heart disease risk from uneven patient data. *Note: This is a learning project built with a public dataset and is not intended for medical use.*
+This project shows how careful data cleaning, a PyTorch neural network weighted with `pos_weight`, and tuning the decision threshold can work together to predict heart disease risk from uneven patient data without synthetic oversampling. *Note: This is a learning project built with a public dataset and is not intended for medical use.*
